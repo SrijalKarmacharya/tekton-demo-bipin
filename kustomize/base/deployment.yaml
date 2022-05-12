@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: tekton-demo
-        image: sanu139/tekton-demo:latest
+        image: sanu139/tekton-demo
         ports:
         - containerPort: 80
         livenessProbe:
