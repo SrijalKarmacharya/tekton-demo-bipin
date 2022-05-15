@@ -1,0 +1,18 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: test-tekton-run
+  namespace: tekton-builds
+spec:
+  serviceAccountName: default
+  pipelineRef:
+    name: tekton-demo
+  workspaces:
+  - name: pipeline-ws
+    volumeClaimTemplate:
+      spec:
+        resources: 
+          requests:
+            storage: 100Mi
+        accessModes:
+          - ReadWriteOnce
