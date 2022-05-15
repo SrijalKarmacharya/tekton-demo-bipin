@@ -1,0 +1,203 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: tekton-demo
+  namespace: tekton-builds
+spec:
+  params:
+  - name: project
+    default: tekton-demo
+  - name: release
+    default: "latest"
+  workspaces:
+  - name: pipeline-ws
+  tasks:
+  - name: git-clone
+    taskRef:
+      name: task-git-clone
+    workspaces:
+    - name: source
+      workspace: pipeline-ws
+    params:
+    - name: url
+      value: https://github.com/Bipin210/$(params.project)
+  - name: build-container-image
+    taskRef:
+      name: build-kaniko-git
+    params:
+    - name: app_repo
+      value: https://github.com/Bipin210/$(params.project)
+    - name: container_image
+      value: sanu139/$(params.project)
+    - name: container_tag
+      value: "$(params.release)"
+    runAfter:
+      - git-clone
+  - name: deploy-staging
+    taskRef:
+      name: task-kustomize
+    params:
+    - name: container_image
+      value: sanu139/$(params.project)
+    - name: container_tag
+      value: "$(params.release)"
+    - name: manifests_path
+      value: $(params.project)/kustomize/overlays/staging
+    workspaces:
+    - name: source
+      workspace: pipeline-ws
+    runAfter:
+     - build-container-image
+     - git-clone
+  - name: tests
+    taskRef:
+      name: task-echo
+    params:
+    - name: message
+      value: Running integration tests (before, during, and after the deployment is finished)...
+    runAfter:
+     - deploy-staging
+  - name: deploy-production
+    taskRef:
+      name: task-kustomize
+    params:
+    - name: container_image
+      value: sanu139/$(params.project)
+    - name: container_tag
+      value: "$(params.release)"
+    - name: manifests_path
+      value: $(params.project)/kustomize/overlays/production
+    workspaces:
+    - name: source
+      workspace: pipeline-ws
+    runAfter:
+     - tests
+
+---
+
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: build-kaniko-git
+  namespace: tekton-builds
+spec:
+  params:
+  - name: app_repo
+  - name: container_image
+  - name: container_tag
+  steps:
+  - name: build
+    image: gcr.io/kaniko-project/executor:v0.10.0
+    env:
+    - name: "DOCKER_CONFIG"
+      value: "/builder/home/.docker/"
+    command:
+        - /kaniko/executor
+    args:
+    - --dockerfile=Dockerfile
+    - --destination=sanu139/tekton-demo
+    - --context=git://github.com/Bipin210/tekton-demo/
+    - --force
+    - --skip-tls-verify
+    volumeMounts:
+    - name: kaniko-secret
+      mountPath: /builder/home/.docker/
+
+  volumes:
+  - name: kaniko-secret
+    secret:
+      secretName: regcred
+      items: 
+        - key: .dockerconfigjson
+          path: config.json
+---
+
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: task-echo
+  namespace: tekton-builds
+spec:
+  params:
+  - name: message
+    type: string
+  steps:
+  - name: sleep
+    image: alpine:latest
+    command: [echo]
+    args: ["$(params.message)"]
+
+---
+
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: task-kustomize
+  namespace: tekton-builds
+spec:
+  params:
+  - name: container_image
+    type: string
+  - name: container_tag
+    type: string
+  - name: manifests_path
+    type: string
+  workspaces:
+  - name: source
+  steps:
+  - name: version
+    image: nekottyo/kustomize-kubeval
+    script: |
+      cd $(workspaces.source.path)/$(params.manifests_path)
+      kustomize edit set image $(params.container_image)=$(params.container_image):$(params.container_tag)
+      kustomize build | kubectl apply --filename -
+
+---
+
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: task-git-clone
+  namespace: tekton-builds
+spec:
+  workspaces:
+  - name: source
+  params:
+  - name: url
+    type: string
+  steps:
+  - name: clone
+    image: bitnami/git
+    script: |
+      cd $(workspaces.source.path)
+      git clone $(params.url)
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pipelines
+rules:
+  - apiGroups:
+      - "*"
+    resources:
+      - "*"
+    verbs:
+      - "*"
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pipelines
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pipelines
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: tekton-builds
