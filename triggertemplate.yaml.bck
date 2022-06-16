@@ -1,0 +1,32 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerTemplate
+metadata:
+        # annotations:
+        # triggers.tekton.dev/old-escape-quotes: "true"
+  name: push-trigger-template
+spec:
+  params:
+  - name: git-repository-url
+    description: The git repository url
+  resourcetemplates:
+  - apiVersion: tekton.dev/v1beta1
+    kind: PipelineRun
+    metadata:
+      generateName: something-pushed-
+    spec:
+      serviceAccountName: tekton-triggers-example-sa
+      pipelineRef:
+        name: tekton-demo-bipin
+      params:
+      - name: repository
+        value: $(tt.params.git-repository-url)
+      workspaces:
+      - name: source 
+        workspace: pipeline-ws
+      resources:
+        - name: git-repo
+          resourceRef:
+            name: git-repo
+        - name: image-registry
+          resourceRef:
+            name: image-registry

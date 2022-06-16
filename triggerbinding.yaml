@@ -1,0 +1,11 @@
+
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: event-binding
+spec:
+  params:
+    - name: git-repository-url
+      value: $(body.repository.url)
+    - name: gitrevision
+      value: $(body.head_commit.id)

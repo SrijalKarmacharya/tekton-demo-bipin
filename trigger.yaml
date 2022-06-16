@@ -1,0 +1,54 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: event-binding
+spec:
+  params:
+    - name: git-repository-url
+      value: $(body.repository.url)
+    - name: gitrevision
+      value: $(body.head_commit.id)
+
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerTemplate
+metadata:
+  name: push-trigger-template
+spec:
+  serviceAccountName: tekton-triggers-example-sa
+  params:
+  - name: git-repository-url
+    description: The git repository url
+  resourcetemplates:
+  - apiVersion: tekton.dev/v1beta1
+    kind: PipelineRun
+    metadata:
+      generateName: something-pushed-
+    spec:
+      pipelineRef:
+        name: tekton-demo-bipin
+      params:
+      - name: repository
+        value: $(tt.params.git-repository-url)
+
+---
+
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: EventListener
+metadata:
+  name: listener
+spec:
+  serviceAccountName: tekton-triggers-example-sa 
+  triggers:
+    - name: trigger
+      bindings:
+        - ref: event-binding
+      template:
+        ref: push-trigger-template
+      interceptors:
+        - github:
+            secretRef:
+              secretName: github-interceptor-secret 
+              secretKey: secretToken
+            eventTypes:
+              - push
