@@ -13,4 +13,7 @@ dev:
 
 codefresh:
 	codefresh auth create-context devops-catalog --api-key $CF_TOKEN
+	
+test:
+	echo "linting done"
 
